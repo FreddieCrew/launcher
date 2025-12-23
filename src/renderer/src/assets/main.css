@@ -1,0 +1,20 @@
+@import "tailwindcss";
+@import './base.css';
+
+@theme {
+  --color-bg-app: #0e0e10;
+  --color-bg-panel: #141417;
+  --color-bg-header: #1b1b1f;
+  --color-bg-input: #080809;
+  --color-accent: #8477b7;
+  --color-accent-hover: #9b8ccf;
+
+  --color-success: #68AD5B;
+  --color-danger: #ef4444;
+  --color-border: #27272a;
+  --font-sans: "Inter", "Segoe UI", sans-serif;
+}
+
+@utility no-drag {
+  -webkit-app-region: no-drag;
+}

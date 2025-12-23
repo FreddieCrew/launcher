@@ -1,0 +1,110 @@
+{
+  "name": "openmp-launcher",
+  "version": "1.0.0",
+  "description": "Open.mp Launcher for Linux",
+  "main": "./out/main/index.js",
+  "author": "John M. R",
+  "homepage": "",
+  "build": {
+    "appId": "com.omp-launcher",
+    "productName": "Open.mp Launcher",
+    "directories": {
+      "output": "dist"
+    },
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "resources",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "files": [
+      "out/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Open.mp Launcher"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "pacman"
+      ],
+      "maintainer": "John M. R <120303127+FreddieCrew@users.noreply.github.com>",
+      "category": "Game",
+      "icon": "resources/icons"
+    }
+  },
+  "scripts": {
+    "format": "prettier --write .",
+    "lint": "eslint --cache .",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "start": "electron-vite preview",
+    "dev": "electron-vite dev",
+    "postinstall": "electron-builder install-app-deps",
+    "build": "pnpm run typecheck && electron-vite build",
+    "build:win": "pnpm run build && electron-builder --win",
+    "build:linux": "pnpm run build && electron-builder --linux"
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^4.0.0",
+    "@tailwindcss/postcss": "^4.1.18",
+    "@tailwindcss/vite": "^4.1.18",
+    "axios": "^1.13.2",
+    "clsx": "^2.1.1",
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.3.9",
+    "fs-extra": "^11.3.3",
+    "koffi": "^2.15.0",
+    "react-window": "^2.2.3",
+    "react-window-infinite-loader": "^2.0.0",
+    "remixicon": "^4.7.0",
+    "tailwind-merge": "^3.4.0",
+    "zustand": "^5.0.9"
+  },
+  "devDependencies": {
+    "@electron-toolkit/eslint-config-prettier": "^3.0.0",
+    "@electron-toolkit/eslint-config-ts": "^3.1.0",
+    "@electron-toolkit/tsconfig": "^2.0.0",
+    "@types/node": "^22.19.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@types/react-window": "^2.0.0",
+    "@types/react-window-infinite-loader": "^2.0.0",
+    "@vitejs/plugin-react": "^5.1.1",
+    "autoprefixer": "^10.4.23",
+    "electron": "^39.2.6",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^5.0.0",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "postcss": "^8.5.6",
+    "prettier": "^3.7.4",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.6"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "electron-winstaller",
+      "esbuild",
+      "koffi"
+    ]
+  }
+}
