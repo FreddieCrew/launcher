@@ -32,18 +32,14 @@ jobs:
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Install Linux System Deps (MinGW & Wine)
+      - name: Install Linux System Deps (MinGW, Wine & Tools)
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y mingw-w64 wine
-
+          sudo apt-get install -y mingw-w64 wine libarchive-tools
       - name: Setup MinGW (Windows)
         if: matrix.os == 'windows-latest'
-        uses: egor-tensin/setup-mingw@v2
-        with:
-          platform: x64
+        run: choco install mingw --force
 
       - name: Prepare Assets & Injector
         run: pnpm run prepare-build
