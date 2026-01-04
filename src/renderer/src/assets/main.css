@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 @import './base.css';
 
 @theme {
@@ -9,10 +9,10 @@
   --color-accent: #8477b7;
   --color-accent-hover: #9b8ccf;
 
-  --color-success: #68AD5B;
+  --color-success: #68ad5b;
   --color-danger: #ef4444;
   --color-border: #27272a;
-  --font-sans: "Inter", "Segoe UI", sans-serif;
+  --font-sans: 'Inter', 'Segoe UI', sans-serif;
 }
 
 @utility no-drag {

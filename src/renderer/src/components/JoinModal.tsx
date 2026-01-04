@@ -1,42 +1,46 @@
-import { useState, useEffect } from 'react';
-import { useAppStore } from '../store/useAppStore';
+import { useState, useEffect } from 'react'
+import { useAppStore } from '../store/useAppStore'
+import { SAMP_VERSIONS } from '../../../shared/versions'
 
 export const JoinModal = () => {
-  const { isJoinModalOpen, closeJoinModal, getSelectedServer, config, savedNicknames, launch } = useAppStore();
-  const [nick, setNick] = useState('');
-  const [pass, setPass] = useState('');
-  const selectedServer = getSelectedServer();
+  const { isJoinModalOpen, closeJoinModal, getSelectedServer, config, launch } = useAppStore()
+  const [nick, setNick] = useState('')
+  const [pass, setPass] = useState('')
+  const [version, setVersion] = useState(config.preferredVersion || '0.3.7-R5')
+
+  const selectedServer = getSelectedServer()
 
   useEffect(() => {
     if (isJoinModalOpen && selectedServer) {
-      const serverKey = `${selectedServer.ip}:${selectedServer.port}`;
-      const specificNick = savedNicknames[serverKey];
-
-      setNick(specificNick || config.nickname);
-      setPass('');
+      setNick(config.nickname)
+      setVersion(config.preferredVersion || '0.3.7-R5')
+      setPass('')
     }
-  }, [isJoinModalOpen, selectedServer, config.nickname, savedNicknames]);
+  }, [isJoinModalOpen, selectedServer, config])
 
-  if (!isJoinModalOpen || !selectedServer) return null;
+  if (!isJoinModalOpen || !selectedServer) return null
 
   const handleLaunch = () => {
-    if (!nick.trim()) return;
-    launch(pass, nick);
-    closeJoinModal();
-  };
+    if (!nick.trim()) return
+    launch(pass, nick, version)
+    closeJoinModal()
+  }
 
-  const isUsingGlobal = nick === config.nickname;
+  const isUsingGlobal = nick === config.nickname
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
       <div className="bg-bg-panel border border-border w-[400px] rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-
         <div className="px-6 py-4 border-b border-border bg-bg-header flex justify-between items-center">
           <div className="overflow-hidden">
             <h3 className="text-white font-bold truncate">{selectedServer.hostname}</h3>
-            <div className="text-[10px] text-gray-500 font-mono">{selectedServer.ip}:{selectedServer.port}</div>
+            <div className="text-[10px] text-gray-500 font-mono">
+              {selectedServer.ip}:{selectedServer.port}
+            </div>
           </div>
-          <button onClick={closeJoinModal}><i className="ri-close-line cursor-pointer text-gray-400 hover:text-white text-xl"></i></button>
+          <button onClick={closeJoinModal}>
+            <i className="ri-close-line cursor-pointer text-gray-400 hover:text-white text-xl"></i>
+          </button>
         </div>
 
         <div className="p-6 space-y-4">
@@ -59,7 +63,9 @@ export const JoinModal = () => {
           <div className="space-y-1">
             <label className="text-[10px] font-bold text-gray-500 uppercase flex justify-between">
               <span>Password</span>
-              {!selectedServer.password && <span className="text-gray-600 font-normal normal-case">(Optional)</span>}
+              {!selectedServer.password && (
+                <span className="text-gray-600 font-normal normal-case">(Optional)</span>
+              )}
             </label>
             <input
               type="password"
@@ -70,10 +76,30 @@ export const JoinModal = () => {
               className="w-full bg-bg-input border border-border rounded px-3 py-3 text-sm text-white focus:border-accent outline-none font-mono"
             />
           </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-gray-500 uppercase">Client Version</label>
+            <select
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+              className="w-full bg-bg-input border border-border rounded px-3 py-2 text-xs text-gray-300 focus:border-accent outline-none cursor-pointer"
+            >
+              {SAMP_VERSIONS.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="px-6 py-4 bg-bg-input flex justify-end gap-3 border-t border-border">
-          <button onClick={closeJoinModal} className="px-4 py-2 cursor-pointer text-xs font-bold text-gray-400 hover:text-white">Cancel</button>
+          <button
+            onClick={closeJoinModal}
+            className="px-4 py-2 cursor-pointer text-xs font-bold text-gray-400 hover:text-white"
+          >
+            Cancel
+          </button>
           <button
             onClick={handleLaunch}
             className="px-6 py-2 text-gray-300 cursor-pointer bg-accent hover:bg-accent-hover text-black text-xs font-bold rounded shadow-md shadow-accent-500/20"
@@ -83,5 +109,5 @@ export const JoinModal = () => {
         </div>
       </div>
     </div>
-  );
-};
+  )
+}

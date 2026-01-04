@@ -7,14 +7,14 @@ export default defineConfig({
   main: {
     build: {
       sourcemap: false,
-      minify: true,
-    },
+      minify: true
+    }
   },
   preload: {
     build: {
       sourcemap: false,
       minify: true
-    },
+    }
   },
   renderer: {
     resolve: {
@@ -28,9 +28,6 @@ export default defineConfig({
       minify: true
     },
 
-    plugins: [
-      tailwindcss() as any,
-      react()
-    ]
+    plugins: [tailwindcss() as any, react()]
   }
 })

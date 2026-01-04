@@ -1,129 +1,106 @@
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
+
 #include <windows.h>
-#include <tlhelp32.h>
+#include <filesystem>
 #include <iostream>
 #include <string>
+#include <tlhelp32.h>
 #include <vector>
-#include <algorithm>
 
+namespace fs = std::filesystem;
 using namespace std;
 
-bool IsModuleLoaded(DWORD pid, const string& moduleName) {
-    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
-    if (hSnap == INVALID_HANDLE_VALUE) return false;
+bool InjectDLL(HANDLE hProcess, const wstring &dllPath) {
+  size_t size = (dllPath.length() + 1) * sizeof(wchar_t);
 
-    MODULEENTRY32 me;
-    me.dwSize = sizeof(MODULEENTRY32);
+  void *pRemoteMem =
+      VirtualAllocEx(hProcess, NULL, size, MEM_COMMIT, PAGE_READWRITE);
+  if (!pRemoteMem) {
+    wcerr << L"[Injector] Alloc failed: " << GetLastError() << endl;
+    return false;
+  }
 
-    bool found = false;
-    if (Module32First(hSnap, &me)) {
-        do {
-            string currentMod = me.szModule;
-            transform(currentMod.begin(), currentMod.end(), currentMod.begin(), ::tolower);
-            
-            if (currentMod.find(moduleName) != string::npos) {
-                found = true;
-                break;
-            }
-        } while (Module32Next(hSnap, &me));
-    }
-    
-    CloseHandle(hSnap);
-    return found;
+  if (!WriteProcessMemory(hProcess, pRemoteMem, dllPath.c_str(), size, NULL)) {
+    wcerr << L"[Injector] Write failed: " << GetLastError() << endl;
+    VirtualFreeEx(hProcess, pRemoteMem, 0, MEM_RELEASE);
+    return false;
+  }
+
+  HMODULE hKernel32 = GetModuleHandleW(L"kernel32.dll");
+  LPVOID pLoadLibrary = (LPVOID)GetProcAddress(hKernel32, "LoadLibraryW");
+
+  HANDLE hThread = CreateRemoteThread(hProcess, NULL, 0,
+                                      (LPTHREAD_START_ROUTINE)pLoadLibrary,
+                                      pRemoteMem, 0, NULL);
+  if (!hThread) {
+    wcerr << L"[Injector] Thread failed: " << GetLastError() << endl;
+    VirtualFreeEx(hProcess, pRemoteMem, 0, MEM_RELEASE);
+    return false;
+  }
+
+  WaitForSingleObject(hThread, 10000);
+
+  DWORD exitCode = 0;
+  GetExitCodeThread(hThread, &exitCode);
+
+  CloseHandle(hThread);
+  VirtualFreeEx(hProcess, pRemoteMem, 0, MEM_RELEASE);
+
+  return exitCode != 0;
 }
 
-bool InjectDLL(DWORD pid, const string& dllPath) {
-    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
-    if (!hProcess) {
-        cerr << "Failed to open process. Error: " << GetLastError() << endl;
-        return false;
+int wmain(int argc, wchar_t *argv[]) {
+  // Usage: injector.exe <exe_path> <dll_count> <dll_1> <dll_2> ... <game_args>
+  if (argc < 4)
+    return 1;
+
+  wstring gtaPath = argv[1];
+  int dllCount = _wtoi(argv[2]);
+
+  vector<wstring> dlls;
+  for (int i = 0; i < dllCount; i++) {
+    dlls.push_back(argv[3 + i]);
+  }
+
+  wstring cmdLine = L"\"" + gtaPath + L"\"";
+  for (int i = 3 + dllCount; i < argc; ++i) {
+    cmdLine += L" ";
+    cmdLine += argv[i];
+  }
+
+  wstring workDir = fs::path(gtaPath).parent_path().wstring();
+
+  STARTUPINFOW si = {sizeof(si)};
+  PROCESS_INFORMATION pi;
+
+  wcout << L"[Injector] Launching: " << gtaPath << endl;
+  if (!CreateProcessW(NULL, &cmdLine[0], NULL, NULL, FALSE, CREATE_SUSPENDED,
+                      NULL, workDir.c_str(), &si, &pi)) {
+    wcerr << L"CreateProcess failed: " << GetLastError() << endl;
+    return 1;
+  }
+
+  bool success = true;
+  for (const auto &dll : dlls) {
+    wcout << L"   -> Injecting: " << dll << endl;
+    if (!InjectDLL(pi.hProcess, dll)) {
+      wcerr << L"      FAILED. Error Code: " << GetLastError() << endl;
+      success = false;
+      break;
     }
+  }
 
-    void* pRemoteMem = VirtualAllocEx(hProcess, NULL, dllPath.length() + 1, MEM_COMMIT, PAGE_READWRITE);
-    if (!pRemoteMem) {
-        cerr << "VirtualAllocEx failed. Error: " << GetLastError() << endl;
-        CloseHandle(hProcess);
-        return false;
-    }
+  if (success) {
+    wcout << L"[Injector] Resuming Game" << endl;
+    ResumeThread(pi.hThread);
+  } else {
+    wcerr << L"[Injector] Injection failed - Terminating." << endl;
+    TerminateProcess(pi.hProcess, 1);
+  }
 
-    if (!WriteProcessMemory(hProcess, pRemoteMem, dllPath.c_str(), dllPath.length() + 1, NULL)) {
-        cerr << "WriteProcessMemory failed. Error: " << GetLastError() << endl;
-        CloseHandle(hProcess);
-        return false;
-    }
-
-    HMODULE hKernel32 = GetModuleHandle("kernel32.dll");
-    LPVOID pLoadLibrary = (LPVOID)GetProcAddress(hKernel32, "LoadLibraryA");
-
-    HANDLE hThread = CreateRemoteThread(hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)pLoadLibrary, pRemoteMem, 0, NULL);
-    if (!hThread) {
-        cerr << "CreateRemoteThread failed. Error: " << GetLastError() << endl;
-        CloseHandle(hProcess);
-        return false;
-    }
-
-    WaitForSingleObject(hThread, 5000);
-    
-    CloseHandle(hThread);
-    CloseHandle(hProcess);
-    return true;
-}
-
-int main(int argc, char* argv[]) {
-    if (argc < 4) {
-        cout << "Usage: injector.exe <gta_exe> <dll_count> <dll1> [dll2...] <args...>" << endl;
-        return 1;
-    }
-
-    string gtaPath = argv[1];
-    int dllCount = atoi(argv[2]);
-    
-    vector<string> dlls;
-    for (int i = 0; i < dllCount; i++) {
-        dlls.push_back(argv[3 + i]);
-    }
-    string cmdLine = "\"" + gtaPath + "\"";
-    for (int i = 3 + dllCount; i < argc; ++i) {
-        cmdLine += " ";
-        cmdLine += argv[i];
-    }
-
-    STARTUPINFO si = { sizeof(si) };
-    PROCESS_INFORMATION pi;
-
-    cout << "[Injector] Starting GTA: " << gtaPath << endl;
-    if (!CreateProcess(NULL, (LPSTR)cmdLine.c_str(), NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
-        cerr << "[Injector] Failed to start GTA. Error: " << GetLastError() << endl;
-        return 1;
-    }
-
-    cout << "[Injector] Waiting for game engine (vorbis)..." << endl;
-    bool ready = false;
-    for (int i = 0; i < 200; i++) {
-        if (IsModuleLoaded(pi.dwProcessId, "vorbis")) {
-            ready = true;
-            break;
-        }
-        Sleep(100);
-    }
-
-    if (ready) {
-        cout << "[Injector] Engine ready. Injecting " << dlls.size() << " DLL(s)..." << endl;
-        for (const string& dll : dlls) {
-            cout << "[Injector] Injecting: " << dll << " -> ";
-            if (InjectDLL(pi.dwProcessId, dll)) {
-                cout << "SUCCESS" << endl;
-            } else {
-                cout << "FAILED" << endl;
-            }
-        }
-    } else {
-        cerr << "[Injector] Timeout: Engine did not initialize in time. Killing process." << endl;
-        TerminateProcess(pi.hProcess, 1);
-        return 1;
-    }
-
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-    cout << "[Injector] Done. Closing injector proxy." << endl;
-    return 0;
+  CloseHandle(pi.hProcess);
+  CloseHandle(pi.hThread);
+  return 0;
 }

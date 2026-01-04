@@ -69,7 +69,11 @@ if (!gotTheLock) {
       optimizer.watchWindowShortcuts(window)
     })
 
-    try { QueryService.getInstance().start() } catch (e) { console.error(e) }
+    try {
+      QueryService.getInstance().start()
+    } catch (e) {
+      console.error(e)
+    }
 
     createWindow()
 

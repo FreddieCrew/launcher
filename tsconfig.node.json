@@ -28,6 +28,7 @@
     "electron.vite.config.*",
     "electron-builder.ts",
     "index.d.ts",
-    "electron.vite.config.ts"
+    "electron.vite.config.ts",
+    "src/main/external-types.d.ts"
   ]
 }

@@ -1,225 +1,215 @@
-import dgram from 'node:dgram';
-import dns from 'node:dns';
-import log from 'electron-log';
+import dgram from 'node:dgram'
+import dns from 'node:dns'
+import net from 'node:net'
+import log from 'electron-log'
+import iconv from 'iconv-lite'
 
 interface PendingRequest {
-  resolve: (data: any) => void;
-  timer: NodeJS.Timeout;
-  start: number;
+  resolve: (data: any) => void
+  timer: NodeJS.Timeout
+  start: number
 }
 
 export class QueryService {
-  private static instance: QueryService;
-  private socket: dgram.Socket | null = null;
-  private pending = new Map<string, PendingRequest>();
+  private static instance: QueryService
+  private socketV4: dgram.Socket | null = null
+  private socketV6: dgram.Socket | null = null
+  private pending = new Map<string, PendingRequest>()
 
-  private constructor() { }
+  private constructor() {}
 
   public static getInstance(): QueryService {
-    if (!QueryService.instance) QueryService.instance = new QueryService();
-    return QueryService.instance;
+    if (!QueryService.instance) QueryService.instance = new QueryService()
+    return QueryService.instance
   }
 
   public start() {
-    if (this.socket) return;
+    if (!this.socketV4) {
+      this.socketV4 = dgram.createSocket('udp4')
+      this.bindSocket(this.socketV4, 'IPv4')
+    }
+    if (!this.socketV6) {
+      this.socketV6 = dgram.createSocket('udp6')
+      this.bindSocket(this.socketV6, 'IPv6')
+    }
+  }
 
-    this.socket = dgram.createSocket('udp4');
+  private bindSocket(socket: dgram.Socket, label: string) {
+    socket.bind(0, () => log.info(`[QueryService] ${label} Socket bound`))
+    socket.on('message', (msg, rinfo) => this.handleMessage(msg, rinfo.address, rinfo.port))
+    socket.on('error', (err) => log.error(`[QueryService] ${label} Socket Error:`, err))
+  }
 
-    this.socket.bind(0, () => {
-      log.info('[QueryService] UDP Socket bound');
-    });
+  private handleMessage(msg: Buffer, address: string, port: number) {
+    if (msg.length < 11) return
+    if (msg.toString('latin1', 0, 4) !== 'SAMP') return
 
-    this.socket.on('message', (msg, rinfo) => {
-      if (msg.length < 11) return;
-      if (msg.toString('latin1', 0, 4) !== 'SAMP') return;
-      const opcode = String.fromCharCode(msg.readUInt8(10));
-      const key = `${rinfo.address}:${rinfo.port}:${opcode}`;
+    const opcode = String.fromCharCode(msg.readUInt8(10))
+    let normalizedAddr = address
+    if (net.isIPv6(address) && address.startsWith('::ffff:')) {
+      normalizedAddr = address.substring(7)
+    }
 
-      if (this.pending.has(key)) {
-        const { resolve, timer, start } = this.pending.get(key)!;
-        clearTimeout(timer);
-        this.pending.delete(key);
+    const key = `${normalizedAddr}:${port}:${opcode}`
 
-        const latency = Date.now() - start;
-        const data = this.parsePacket(msg, opcode);
+    if (this.pending.has(key)) {
+      const { resolve, timer, start } = this.pending.get(key)!
+      clearTimeout(timer)
+      this.pending.delete(key)
 
-        if (data) {
-          if (!Array.isArray(data) && typeof data === 'object') {
-            data.ping = latency;
-          }
-          resolve(data);
-        } else {
-          resolve(null);
+      const latency = Date.now() - start
+      const data = this.parsePacket(msg, opcode)
+
+      if (data) {
+        if (!Array.isArray(data) && typeof data === 'object') {
+          data.ping = latency
         }
+        resolve(data)
+      } else {
+        resolve(null)
       }
-    });
-
-    this.socket.on('error', (err) => log.error('[QueryService] Socket Error:', err));
+    }
   }
 
   public stop() {
-    this.socket?.close();
-    this.socket = null;
+    this.socketV4?.close()
+    this.socketV6?.close()
+    this.socketV4 = null
+    this.socketV6 = null
   }
 
   public async query(host: string, port: number, opcode: string): Promise<any> {
-    if (!this.socket) this.start();
+    this.start()
+    let ip = host.replace(/^\[|\]$/g, '')
 
-    let ip = host;
-    if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) {
+    if (!net.isIP(ip)) {
       try {
-        ip = await this.resolveHostname(host);
-      } catch (e) {
-        log.warn(`[QueryService] DNS Failed for ${host}`);
-        return null;
+        ip = await this.resolveHostname(ip)
+      } catch (e: any) {
+        log.warn(`[QueryService] DNS Failed for ${host}: ${e.message}`)
+        return null
       }
     }
 
-    const key = `${ip}:${port}:${opcode}`;
+    const isV6 = net.isIPv6(ip)
+    const key = `${ip}:${port}:${opcode}`
 
     return new Promise((resolve) => {
-      if (this.pending.has(key)) {
-        return;
-      }
+      if (this.pending.has(key)) return
 
-      const packet = this.buildPacket(ip, port, opcode);
-
+      const packet = this.buildPacket(ip, port, opcode)
       const timer = setTimeout(() => {
-        this.pending.delete(key);
-        resolve(null);
-      }, 3000);
+        this.pending.delete(key)
+        resolve(null)
+      }, 3000)
 
-      this.pending.set(key, { resolve, timer, start: Date.now() });
+      this.pending.set(key, { resolve, timer, start: Date.now() })
 
       try {
-        if (this.socket) {
-          this.socket.send(packet, port, ip, (err) => {
+        const socket = isV6 ? this.socketV6 : this.socketV4
+        if (socket) {
+          socket.send(packet, port, ip, (err) => {
             if (err) {
-              log.error('[QueryService] Send Error:', err);
-              clearTimeout(timer);
-              this.pending.delete(key);
-              resolve(null);
+              log.error(`[QueryService] Send Error (${ip}):`, err)
+              clearTimeout(timer)
+              this.pending.delete(key)
+              resolve(null)
             }
-          });
+          })
         }
       } catch (e) {
-        clearTimeout(timer);
-        this.pending.delete(key);
-        resolve(null);
+        log.error(`[QueryService] Socket Exception:`, e)
+        clearTimeout(timer)
+        this.pending.delete(key)
+        resolve(null)
       }
-    });
+    })
   }
 
   private resolveHostname(hostname: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      dns.lookup(hostname, 4, (err, address) => {
-        if (err) reject(err);
-        else resolve(address);
-      });
-    });
+      dns.lookup(hostname, (err, address) => {
+        if (err) reject(err)
+        else resolve(address)
+      })
+    })
   }
 
   private buildPacket(ip: string, port: number, opcode: string): Buffer {
-    const packet = Buffer.alloc(11);
-
-    packet.write('SAMP', 0, 4, 'latin1');
-
-    const parts = ip.split('.');
-    for (let i = 0; i < 4; i++) {
-      packet.writeUInt8(parseInt(parts[i], 10), 4 + i);
+    const packet = Buffer.alloc(11)
+    packet.write('SAMP', 0, 4, 'latin1')
+    if (net.isIPv6(ip)) {
+      // SA-MP protocol is fucking old. Fill IP field with 0. This is hacky.
+      packet.writeUInt32LE(0, 4)
+    } else {
+      const parts = ip.split('.')
+      for (let i = 0; i < 4; i++) packet.writeUInt8(parseInt(parts[i], 10), 4 + i)
     }
-
-    packet.writeUInt16LE(port, 8);
-    packet.write(opcode, 10, 1, 'latin1');
-    return packet;
+    packet.writeUInt16LE(port, 8)
+    packet.write(opcode, 10, 1, 'latin1')
+    return packet
   }
 
   private parsePacket(msg: Buffer, opcode: string): any {
-    if (msg.length < 11) return null;
-
+    if (msg.length < 11) return null
     try {
-      let offset = 11;
-
+      let offset = 11
       if (opcode === 'i') {
-        if (offset + 1 > msg.length) return null;
-        const password = msg.readUInt8(offset++) === 1;
-
-        if (offset + 4 > msg.length) return null;
-        const players = msg.readUInt16LE(offset); offset += 2;
-        const maxPlayers = msg.readUInt16LE(offset); offset += 2;
-
-        if (offset + 4 > msg.length) return null;
-        const hnLen = msg.readUInt32LE(offset); offset += 4;
-        if (offset + hnLen > msg.length) return null;
-        const hostname = this.readString(msg, offset, hnLen); offset += hnLen;
-
-        if (offset + 4 > msg.length) return null;
-        const gmLen = msg.readUInt32LE(offset); offset += 4;
-        if (offset + gmLen > msg.length) return null;
-        const mode = this.readString(msg, offset, gmLen); offset += gmLen;
-
-        if (offset + 4 > msg.length) return null;
-        const langLen = msg.readUInt32LE(offset); offset += 4;
-        if (offset + langLen > msg.length) return null;
-        const language = this.readString(msg, offset, langLen);
-
-        return { hostname, players, maxPlayers, mode, language, password };
+        const password = msg.readUInt8(offset++) === 1
+        const players = msg.readUInt16LE(offset)
+        offset += 2
+        const maxPlayers = msg.readUInt16LE(offset)
+        offset += 2
+        const hnLen = msg.readUInt32LE(offset)
+        offset += 4
+        const hostname = this.readString(msg, offset, hnLen)
+        offset += hnLen
+        const gmLen = msg.readUInt32LE(offset)
+        offset += 4
+        const mode = this.readString(msg, offset, gmLen)
+        offset += gmLen
+        const langLen = msg.readUInt32LE(offset)
+        offset += 4
+        const language = this.readString(msg, offset, langLen)
+        return { hostname, players, maxPlayers, mode, language, password }
       }
-
-      else if (opcode === 'c') {
-        if (offset + 2 > msg.length) return [];
-        const count = msg.readUInt16LE(11);
-        offset = 13;
-        const players = [];
-
+      if (opcode === 'c') {
+        const count = msg.readUInt16LE(11)
+        offset = 13
+        const players: any[] = []
         for (let i = 0; i < count; i++) {
-          if (offset + 1 > msg.length) break;
-          const nl = msg.readUInt8(offset++);
-
-          if (offset + nl > msg.length) break;
-          const name = this.readString(msg, offset, nl); offset += nl;
-
-          if (offset + 4 > msg.length) break;
-          const score = msg.readUInt32LE(offset); offset += 4;
-
-          players.push({ name, score });
+          const nl = msg.readUInt8(offset++)
+          const name = this.readString(msg, offset, nl)
+          offset += nl
+          const score = msg.readUInt32LE(offset)
+          offset += 4
+          players.push({ name, score })
         }
-        return players;
+        return players
       }
-
-      else if (opcode === 'r') {
-        if (offset + 2 > msg.length) return {};
-        const count = msg.readUInt16LE(11);
-        offset = 13;
-        const rules: { [key: string]: string } = {};
-
+      if (opcode === 'r') {
+        const count = msg.readUInt16LE(11)
+        offset = 13
+        const rules: Record<string, string> = {}
         for (let i = 0; i < count; i++) {
-          if (offset + 1 > msg.length) break;
-          const keyLen = msg.readUInt8(offset++);
-
-          if (offset + keyLen > msg.length) break;
-          const key = this.readString(msg, offset, keyLen).toLowerCase();
-          offset += keyLen;
-
-          if (offset + 1 > msg.length) break;
-          const valLen = msg.readUInt8(offset++);
-
-          if (offset + valLen > msg.length) break;
-          const val = this.readString(msg, offset, valLen);
-          offset += valLen;
-
-          rules[key] = val;
+          const kLen = msg.readUInt8(offset++)
+          const key = this.readString(msg, offset, kLen)
+          offset += kLen
+          const vLen = msg.readUInt8(offset++)
+          const val = this.readString(msg, offset, vLen)
+          offset += vLen
+          rules[key.toLowerCase()] = val
         }
-        return rules;
+        return rules
       }
     } catch (e) {
-      log.error('[QueryService] Parse Error', e);
-      return null;
+      log.error('[QueryService] Parse Error', e)
+      return null
     }
-    return null;
+    return null
   }
 
   private readString(buf: Buffer, start: number, len: number): string {
-    return buf.toString('latin1', start, start + len);
+    return iconv.decode(buf.slice(start, start + len), 'win1251')
   }
 }

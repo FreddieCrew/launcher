@@ -42,3 +42,6 @@ tmp/
 temp/
 *.tmp
 *.swp
+resources/game_assets/
+temp_assets/
+.eslint-cache

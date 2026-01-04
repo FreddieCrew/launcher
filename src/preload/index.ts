@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 const api = {
+  platform: process.platform,
+
   window: {
     minimize: () => ipcRenderer.invoke('win-control', 'min'),
     maximize: () => ipcRenderer.invoke('win-control', 'max'),
@@ -8,7 +10,8 @@ const api = {
   },
   server: {
     queryInfo: (ip: string, port: number) => ipcRenderer.invoke('core-query-server', { ip, port }),
-    queryPlayers: (ip: string, port: number) => ipcRenderer.invoke('core-query-players', { ip, port }),
+    queryPlayers: (ip: string, port: number) =>
+      ipcRenderer.invoke('core-query-players', { ip, port }),
     queryRules: (ip: string, port: number) => ipcRenderer.invoke('core-query-rules', { ip, port }),
     launch: (config: any) => ipcRenderer.invoke('core-launch', config)
   },
