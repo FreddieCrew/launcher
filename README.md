@@ -1,7 +1,7 @@
 # Open.mp Launcher
 
-A cross-platform server browser and launcher for Open.mp / SA-MP. 
-Built primarily for **Linux** (via Wine) because the existing options were garbage. Windows support exists too, I guess.
+A cross-platform server browser and launcher for open.mp / SA-MP. 
+Built primarily for **Linux** (via Wine). It should work on Windows too, I hope.
 
 ## Why?
 
@@ -9,9 +9,9 @@ The official open.mp launcher does not officially support Linux. This one handle
 
 ## Architecture
 
-This isn't just a wrapper. It includes:
+This isn't just a wrapper *anymore*. It includes:
 
-*   **Custom C++ Injector**: A native `simple-injector.exe` compiled from source that handles the DLL injection process (loads `samp.dll` and `omp-client.dll` in a suspended state).
+*   **Custom C++ Injector**: A native `simple-injector.exe` compiled from source that handles the DLL injection process (loads `samp.dll` and `omp-client.dll` in a suspended state). So we don't depend on the omp-launcher to handle the injection.
 *   **Zero-Dependency Networking**: Custom UDP implementation of the SA-MP query protocol (i/c/r opcodes).
 *   **Asset Management**: Automatically hash-checks and downloads correct SA-MP versions (0.3.7-R5, DL, etc.) and assets (`sampgui.png`, fonts).
 *   **Wine Automation**: Automatically detects your Wine prefix, sets `WINEDLLOVERRIDES`, and handles the registry for `PlayerName`.
@@ -63,3 +63,5 @@ When you click play:
 3. It spawns the injector, which creates the GTA process in `CREATE_SUSPENDED` mode.
 4. It injects the DLLs via `VirtualAllocEx` / `CreateRemoteThread`.
 5. It resumes the thread.
+
+PRs and issues are appreciated.
